@@ -45,6 +45,8 @@ INSTALLED_APPS = [
     'rest_framework',
     # чёрный список refresh-токенов (для logout)
     'rest_framework_simplejwt.token_blacklist',
+    # фильтрация списков
+    'django_filters',
     # наше приложение
     'core',
 ]
@@ -150,6 +152,33 @@ REST_FRAMEWORK = {
     # Пагинация по умолчанию
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
     'PAGE_SIZE': 10,
+    # Фильтрация и сортировка
+    'DEFAULT_FILTER_BACKENDS': (
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.OrderingFilter',
+    ),
+}
+
+# Лимиты загрузки видео (ТЗ п. 3.1)
+VIDEO_MAX_SIZE_MB = int(os.getenv('VIDEO_MAX_SIZE_MB', '2048'))
+ALLOWED_VIDEO_FORMATS = ('.mp4', '.mov', '.mkv', '.avi', '.webm')
+
+# Путь к ffmpeg (если не указан — берётся из PATH)
+FFMPEG_PATH = os.getenv('FFMPEG_PATH', 'ffmpeg')
+
+
+# Celery (асинхронные задачи)
+
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TIMEZONE = TIME_ZONE
+# Очереди по типу нагрузки (ТЗ п. 8): cpu — ffmpeg, gpu — ML-модели
+CELERY_TASK_DEFAULT_QUEUE = 'cpu'
+CELERY_TASK_ROUTES = {
+    'core.tasks.*': {'queue': 'cpu'},
 }
 
 # Настройки JWT-токенов

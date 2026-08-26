@@ -1,11 +1,16 @@
 # Представления приложения core
 from django.contrib.auth.models import User
 from rest_framework import generics, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
-from .serializers import CustomLoginSerializer, RegisterSerializer, UserSerializer
+from .filters import VideoFilter
+from .models import Video
+from .permissions import IsOwner
+from .tasks import extract_audio_task
+from .serializers import (CustomLoginSerializer, RegisterSerializer, UserSerializer,
+                          VideoSerializer, VideoUploadSerializer)
 
 
 # Авторизация
@@ -57,3 +62,43 @@ class MeView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+# Видео
+
+class VideoListCreateView(generics.ListCreateAPIView):
+    """GET /videos/ — список видео текущего пользователя (пагинация, фильтр по статусу).
+    POST /videos/ — загрузка нового видео (multipart/form-data, поле file)."""
+
+    queryset = Video.objects.all()
+    permission_classes = (IsAuthenticated,)
+    filterset_class = VideoFilter
+    ordering_fields = ('created_at',)
+
+    def get_serializer_class(self):
+        # Для загрузки и для списка — разные сериализаторы
+        if self.request.method == 'POST':
+            return VideoUploadSerializer
+        return VideoSerializer
+
+    def get_queryset(self):
+        # Видим только свои видео
+        return Video.objects.filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        video = serializer.save(owner=self.request.user)
+        # После загрузки сразу запускаем извлечение аудио (ТЗ п. 3.1)
+        extract_audio_task.delay(str(video.id))
+
+
+class VideoDetailView(generics.RetrieveDestroyAPIView):
+    """GET /videos/{id}/ — детали видео.
+    DELETE /videos/{id}/ — удаление видео и связанных данных."""
+
+    queryset = Video.objects.all()
+    serializer_class = VideoSerializer
+    permission_classes = (IsAuthenticated, IsOwner)
+
+    def get_queryset(self):
+        # Видим только свои видео (чужие → 404)
+        return Video.objects.filter(owner=self.request.user)

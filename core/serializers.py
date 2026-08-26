@@ -1,8 +1,12 @@
 # Сериализаторы приложения core
+import os
+
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
+from .models import Video
 
 
 # Пользователи
@@ -59,3 +63,41 @@ class CustomLoginSerializer(serializers.Serializer):
             'access': str(refresh.access_token),
             'refresh': str(refresh),
         }
+
+
+# Видео
+
+class VideoSerializer(serializers.ModelSerializer):
+    """Сериализатор видео для списка и деталей."""
+
+    class Meta:
+        model = Video
+        fields = ('id', 'original_file', 'duration_seconds', 'detected_language',
+                  'detected_language_confidence', 'status', 'created_at')
+
+
+class VideoUploadSerializer(serializers.ModelSerializer):
+    """Сериализатор загрузки нового видео (multipart, поле file)."""
+
+    file = serializers.FileField(write_only=True)
+
+    class Meta:
+        model = Video
+        fields = ('id', 'status', 'created_at', 'file')
+        read_only_fields = ('id', 'status', 'created_at')
+
+    def validate_file(self, value):
+        """Проверяем формат и размер загружаемого файла."""
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in settings.ALLOWED_VIDEO_FORMATS:
+            raise serializers.ValidationError(
+                f'Формат файла не поддерживается. Разрешены: {", ".join(settings.ALLOWED_VIDEO_FORMATS)}'
+            )
+        max_mb = settings.VIDEO_MAX_SIZE_MB
+        if value.size > max_mb * 1024 * 1024:
+            raise serializers.ValidationError(f'Файл слишком большой. Максимум: {max_mb} МБ')
+        return value
+
+    def create(self, validated_data):
+        file = validated_data.pop('file')
+        return Video.objects.create(original_file=file, **validated_data)
