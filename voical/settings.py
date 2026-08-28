@@ -166,6 +166,14 @@ ALLOWED_VIDEO_FORMATS = ('.mp4', '.mov', '.mkv', '.avi', '.webm')
 # Путь к ffmpeg (если не указан — берётся из PATH)
 FFMPEG_PATH = os.getenv('FFMPEG_PATH', 'ffmpeg')
 
+# Whisper (распознавание речи)
+WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'base')  # tiny / base / small
+MOCK_ML = os.getenv('MOCK_ML', 'false').lower() in ('1', 'true', 'yes')
+
+# Перевод (ТЗ п. 3.4) — провайдер переключается через .env: mock | nllb | google
+TRANSLATE_PROVIDER = os.getenv('TRANSLATE_PROVIDER', 'mock')
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
+
 
 # Celery (асинхронные задачи)
 

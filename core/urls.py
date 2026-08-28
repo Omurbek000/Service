@@ -2,7 +2,7 @@
 from django.urls import path
 
 from .views import (CustomLoginView, LogoutView, MeView, RegisterView,
-                    TokenRefreshView, VideoDetailView, VideoListCreateView)
+                    TokenRefreshView, TranscriptPreviewView, VideoDetailView, VideoListCreateView)
 
 urlpatterns = [
     # Авторизация
@@ -15,4 +15,6 @@ urlpatterns = [
     # Видео
     path('videos/', VideoListCreateView.as_view(), name='video-list'),
     path('videos/<uuid:pk>/', VideoDetailView.as_view(), name='video-detail'),
+    path('videos/<uuid:pk>/preview-transcript/', TranscriptPreviewView.as_view(),
+         name='video-preview-transcript'),
 ]

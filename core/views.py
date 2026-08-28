@@ -6,11 +6,11 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
 from .filters import VideoFilter
-from .models import Video
+from .models import Transcript, Video
 from .permissions import IsOwner
 from .tasks import extract_audio_task
 from .serializers import (CustomLoginSerializer, RegisterSerializer, UserSerializer,
-                          VideoSerializer, VideoUploadSerializer)
+                          TranscriptSerializer, VideoSerializer, VideoUploadSerializer)
 
 
 # Авторизация
@@ -102,3 +102,19 @@ class VideoDetailView(generics.RetrieveDestroyAPIView):
     def get_queryset(self):
         # Видим только свои видео (чужие → 404)
         return Video.objects.filter(owner=self.request.user)
+
+
+class TranscriptPreviewView(generics.RetrieveAPIView):
+    """GET /videos/{id}/preview-transcript/ — черновая транскрипция для предпросмотра."""
+
+    serializer_class = TranscriptSerializer
+    permission_classes = (IsAuthenticated,)
+
+    def get_object(self):
+        # Только своё видео, иначе 404
+        video = generics.get_object_or_404(Video, pk=self.kwargs['pk'], owner=self.request.user)
+        transcript = video.transcripts.order_by('-created_at').first()
+        if not transcript:
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Транскрипция ещё не готова')
+        return transcript

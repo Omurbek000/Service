@@ -6,7 +6,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Video
+from .models import Transcript, Video
 
 
 # Пользователи
@@ -101,3 +101,12 @@ class VideoUploadSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         file = validated_data.pop('file')
         return Video.objects.create(original_file=file, **validated_data)
+
+
+class TranscriptSerializer(serializers.ModelSerializer):
+    """Сериализатор транскрипции (черновая и итоговая)."""
+
+    class Meta:
+        model = Transcript
+        fields = ('id', 'video', 'language', 'segments', 'speakers', 'created_at')
+        read_only_fields = ('id', 'video', 'created_at')
