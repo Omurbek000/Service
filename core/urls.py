@@ -1,8 +1,10 @@
 # Маршруты приложения core
 from django.urls import path
 
-from .views import (CustomLoginView, LogoutView, MeView, RegisterView,
-                    TokenRefreshView, TranscriptPreviewView, VideoDetailView, VideoListCreateView)
+from .views import (CustomLoginView, JobCancelView, JobDetailView, JobListCreateView,
+                    JobResultView, JobRetryView, JobVideoCreateView, LogoutView, MeView,
+                    RegisterView, SubtitleDownloadView, TokenRefreshView, TranscriptPreviewView,
+                    VideoDetailView, VideoListCreateView)
 
 urlpatterns = [
     # Авторизация
@@ -17,4 +19,13 @@ urlpatterns = [
     path('videos/<uuid:pk>/', VideoDetailView.as_view(), name='video-detail'),
     path('videos/<uuid:pk>/preview-transcript/', TranscriptPreviewView.as_view(),
          name='video-preview-transcript'),
+
+    # Задачи обработки
+    path('jobs/', JobListCreateView.as_view(), name='job-list'),
+    path('videos/<uuid:pk>/jobs/', JobVideoCreateView.as_view(), name='video-job-create'),
+    path('jobs/<uuid:pk>/', JobDetailView.as_view(), name='job-detail'),
+    path('jobs/<uuid:pk>/result/', JobResultView.as_view(), name='job-result'),
+    path('jobs/<uuid:pk>/cancel/', JobCancelView.as_view(), name='job-cancel'),
+    path('jobs/<uuid:pk>/retry/', JobRetryView.as_view(), name='job-retry'),
+    path('jobs/<uuid:pk>/subtitles/', SubtitleDownloadView.as_view(), name='job-subtitles'),
 ]

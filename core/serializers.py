@@ -6,7 +6,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Transcript, Video
+from .models import Job, Transcript, Video
 
 
 # Пользователи
@@ -110,3 +110,28 @@ class TranscriptSerializer(serializers.ModelSerializer):
         model = Transcript
         fields = ('id', 'video', 'language', 'segments', 'speakers', 'created_at')
         read_only_fields = ('id', 'video', 'created_at')
+
+
+class JobCreateSerializer(serializers.ModelSerializer):
+    """Создание задачи обработки (выбор режима пользователем — ТЗ п. 3.3)."""
+
+    class Meta:
+        model = Job
+        fields = ('id', 'video', 'mode', 'target_languages', 'hardsub')
+
+    def validate_video(self, value):
+        request = self.context['request']
+        if value.owner != request.user:
+            raise serializers.ValidationError('Видео вам не принадлежит')
+        return value
+
+
+class JobSerializer(serializers.ModelSerializer):
+    """Просмотр задачи и её прогресса."""
+
+    class Meta:
+        model = Job
+        fields = ('id', 'video', 'mode', 'target_languages', 'hardsub', 'status',
+                  'current_step', 'progress_percent', 'result_files', 'created_at', 'finished_at')
+        read_only_fields = ('id', 'status', 'current_step', 'progress_percent',
+                            'result_files', 'created_at', 'finished_at')

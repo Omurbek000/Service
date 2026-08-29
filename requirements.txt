@@ -49,3 +49,10 @@ tzdata==2026.3
 tzlocal==5.4.4
 vine==5.1.0
 wcwidth==0.8.2
+
+# Для реального перевода NLLB-200 (День 7, опционально):
+# раскомментируй и выполни pip install -r requirements.txt
+# transformers==4.56.0
+# sentencepiece==0.2.1
+# torch==2.9.0  # тяжёлый (~700 МБ+), нужен только для реального NLLB
+

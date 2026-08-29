@@ -173,6 +173,8 @@ MOCK_ML = os.getenv('MOCK_ML', 'false').lower() in ('1', 'true', 'yes')
 # Перевод (ТЗ п. 3.4) — провайдер переключается через .env: mock | nllb | google
 TRANSLATE_PROVIDER = os.getenv('TRANSLATE_PROVIDER', 'mock')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
+# Локальная модель NLLB-200 (используется при TRANSLATE_PROVIDER=nllb)
+NLLB_MODEL = os.getenv('NLLB_MODEL', 'facebook/nllb-200-distilled-600M')
 
 
 # Celery (асинхронные задачи)

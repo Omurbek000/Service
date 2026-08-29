@@ -10,3 +10,10 @@ class IsOwner(BasePermission):
 
     def has_object_permission(self, request, view, obj):
         return obj.owner == request.user
+
+
+class IsJobOwner(BasePermission):
+    """Доступ только владельцу задачи (владелец через video)."""
+
+    def has_object_permission(self, request, view, obj):
+        return obj.video.owner == request.user

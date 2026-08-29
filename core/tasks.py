@@ -4,8 +4,9 @@ from pathlib import Path
 
 from celery import shared_task
 from django.conf import settings
+from django.utils import timezone
 
-from .models import Video
+from .models import Job, JobLog, Video
 
 # Кеш модели Whisper, чтобы не грузить её на каждой задаче
 _whisper_model = None
@@ -135,5 +136,86 @@ def detect_language_task(self, video_id):
         if self.request.retries >= self.max_retries:
             video.status = 'failed'
             video.save(update_fields=['status'])
+            return
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=15)
+def process_job_task(self, job_id):
+    """Обрабатывает задачу: перевод транскрипта + генерация субтитров (.srt/.vtt).
+
+    Для режима 'dubbing' субтитры тоже создаются (ТЗ п. 2.1/2.2), TTS — в следующих днях.
+    Статус задачи: created -> processing -> completed / failed.
+    """
+    from .subtitles import build_srt, build_vtt
+    from .translation import translate_text
+
+    try:
+        job = Job.objects.get(id=job_id)
+    except Job.DoesNotExist:
+        return
+
+    job.status = 'processing'
+    job.current_step = 'translating'
+    job.started_at = timezone.now()
+    job.save(update_fields=['status', 'current_step', 'started_at'])
+
+    video = job.video
+    transcript = video.transcripts.order_by('-created_at').first()
+    if not transcript:
+        job.status = 'failed'
+        job.error_message = 'Нет транскрипции для перевода'
+        job.save(update_fields=['status', 'error_message'])
+        return
+
+    src_lang = transcript.language
+    job_dir = Path(settings.MEDIA_ROOT) / 'jobs' / str(job.id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    targets = job.target_languages or [src_lang]
+    result_files = []
+
+    try:
+        for idx, tgt in enumerate(targets, 1):
+            log = JobLog.objects.create(job=job, step_name=f'translate_to_{tgt}', status='running',
+                                        meta={'source': src_lang})
+            if tgt == src_lang:
+                # Субтитры на исходном языке без перевода
+                translated = list(transcript.segments)
+            else:
+                translated = []
+                total = len(transcript.segments) or 1
+                for i, seg in enumerate(transcript.segments):
+                    new_text = translate_text(seg.get('text', ''), src_lang, tgt)
+                    seg_copy = dict(seg)
+                    seg_copy['text'] = new_text
+                    translated.append(seg_copy)
+                    job.progress_percent = int((idx - 1 + (i + 1) / total) / len(targets) * 90)
+                    job.save(update_fields=['progress_percent'])
+            log.status = 'success'
+            log.save(update_fields=['status'])
+
+            # Субтитры генерируем для обоих режимов
+            srt_path = job_dir / f'{tgt}.srt'
+            vtt_path = job_dir / f'{tgt}.vtt'
+            srt_path.write_text(build_srt(translated), encoding='utf-8')
+            vtt_path.write_text(build_vtt(translated), encoding='utf-8')
+            result_files.append({'lang': tgt, 'type': 'srt',
+                                 'path': srt_path.relative_to(settings.MEDIA_ROOT).as_posix()})
+            result_files.append({'lang': tgt, 'type': 'vtt',
+                                 'path': vtt_path.relative_to(settings.MEDIA_ROOT).as_posix()})
+
+        job.result_files = result_files
+        job.current_step = 'done'
+        job.progress_percent = 100
+        job.status = 'completed'
+        job.finished_at = timezone.now()
+        job.save(update_fields=['result_files', 'current_step', 'progress_percent', 'status', 'finished_at'])
+    except Exception as exc:
+        if self.request.retries >= self.max_retries:
+            job.status = 'failed'
+            job.error_message = str(exc)
+            job.finished_at = timezone.now()
+            job.save(update_fields=['status', 'error_message', 'finished_at'])
             return
         raise self.retry(exc=exc)
