@@ -5,8 +5,17 @@ from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Job, Transcript, Video
+
+
+class PayloadTooLarge(APIException):
+    """413 — файл превышает лимит (ТЗ День 10)."""
+
+    status_code = 413
+    default_detail = 'Файл слишком большой'
+    default_code = 'payload_too_large'
 
 
 # Пользователи
@@ -95,7 +104,7 @@ class VideoUploadSerializer(serializers.ModelSerializer):
             )
         max_mb = settings.VIDEO_MAX_SIZE_MB
         if value.size > max_mb * 1024 * 1024:
-            raise serializers.ValidationError(f'Файл слишком большой. Максимум: {max_mb} МБ')
+            raise PayloadTooLarge(f'Файл слишком большой. Максимум: {max_mb} МБ')
         return value
 
     def create(self, validated_data):

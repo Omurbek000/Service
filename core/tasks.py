@@ -12,6 +12,21 @@ from .models import Job, JobLog, Video
 _whisper_model = None
 
 
+def _ws_notify(job_id, event_type, **payload):
+    """Отправляет событие в WebSocket-группу job_{id} (ТЗ День 9, игнор ошибок)."""
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        layer = get_channel_layer()
+        if layer is None:
+            return
+        async_to_sync(layer.group_send)(f'job_{job_id}', {
+            'type': event_type, 'job_id': str(job_id), **payload,
+        })
+    except Exception:
+        pass
+
+
 def get_audio_path(video_id):
     """Путь к извлечённой аудиодорожке (wav 16 кГц моно)."""
     return Path(settings.MEDIA_ROOT) / 'audio' / f'{video_id}.wav'
@@ -192,6 +207,8 @@ def process_job_task(self, job_id):
                     translated.append(seg_copy)
                     job.progress_percent = int((idx - 1 + (i + 1) / total) / len(targets) * 90)
                     job.save(update_fields=['progress_percent'])
+                    _ws_notify(job.id, 'job_progress', progress_percent=job.progress_percent,
+                               current_step=f'translate_to_{tgt}', status='processing')
             log.status = 'success'
             log.save(update_fields=['status'])
 
@@ -211,11 +228,13 @@ def process_job_task(self, job_id):
         job.status = 'completed'
         job.finished_at = timezone.now()
         job.save(update_fields=['result_files', 'current_step', 'progress_percent', 'status', 'finished_at'])
+        _ws_notify(job.id, 'job_completed', result_files=result_files)
     except Exception as exc:
         if self.request.retries >= self.max_retries:
             job.status = 'failed'
             job.error_message = str(exc)
             job.finished_at = timezone.now()
             job.save(update_fields=['status', 'error_message', 'finished_at'])
+            _ws_notify(job.id, 'job_failed', error_message=str(exc))
             return
         raise self.retry(exc=exc)

@@ -1,8 +1,8 @@
 # Маршруты приложения core
 from django.urls import path
 
-from .views import (CustomLoginView, JobCancelView, JobDetailView, JobListCreateView,
-                    JobResultView, JobRetryView, JobVideoCreateView, LogoutView, MeView,
+from .views import (CustomLoginView, HealthView, JobCancelView, JobDetailView, JobListCreateView,
+                    JobResultView, JobRetryView, JobVideoCreateView, LanguagesView, LogoutView, MeView,
                     RegisterView, SubtitleDownloadView, TokenRefreshView, TranscriptPreviewView,
                     VideoDetailView, VideoListCreateView)
 
@@ -19,6 +19,10 @@ urlpatterns = [
     path('videos/<uuid:pk>/', VideoDetailView.as_view(), name='video-detail'),
     path('videos/<uuid:pk>/preview-transcript/', TranscriptPreviewView.as_view(),
          name='video-preview-transcript'),
+
+    # Служебные
+    path('health/', HealthView.as_view(), name='health'),
+    path('languages/', LanguagesView.as_view(), name='languages'),
 
     # Задачи обработки
     path('jobs/', JobListCreateView.as_view(), name='job-list'),

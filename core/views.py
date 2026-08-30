@@ -241,6 +241,65 @@ class JobRetryView(APIView):
         return Response(JobSerializer(job).data, status=status.HTTP_200_OK)
 
 
+class HealthView(APIView):
+    """GET /health/ — проверка доступности БД, Redis, ffmpeg (ТЗ День 9)."""
+
+    permission_classes = (AllowAny,)
+    authentication_classes = []
+
+    def get(self, request):
+        data = {'status': 'ok'}
+        # БД
+        try:
+            from django.db import connection
+            connection.ensure_connection()
+            data['database'] = 'ok'
+        except Exception as e:
+            data['database'] = f'error: {e}'
+            data['status'] = 'degraded'
+        # Redis (через CELERY_BROKER_URL)
+        try:
+            import redis
+            r = redis.from_url(settings.CELERY_BROKER_URL, socket_connect_timeout=2)
+            r.ping()
+            data['redis'] = 'ok'
+        except Exception as e:
+            data['redis'] = f'error: {e}'
+            data['status'] = 'degraded'
+        # ffmpeg
+        try:
+            import subprocess
+            subprocess.run([settings.FFMPEG_PATH, '-version'], capture_output=True, check=True)
+            data['ffmpeg'] = 'ok'
+        except Exception as e:
+            data['ffmpeg'] = f'error: {e}'
+            data['status'] = 'degraded'
+        code = 200 if data['status'] == 'ok' else 503
+        return Response(data, status=code)
+
+
+class LanguagesView(APIView):
+    """GET /languages/ — список поддерживаемых языков (ТЗ День 9)."""
+
+    permission_classes = (AllowAny,)
+    authentication_classes = []
+
+    def get(self, request):
+        from .translation import LANG_TO_FLORES
+        # Человекочитаемые названия (сокращённый список)
+        names = {
+            'en': 'English', 'ru': 'Русский', 'fr': 'Français', 'de': 'Deutsch',
+            'es': 'Español', 'it': 'Italiano', 'pt': 'Português', 'zh': '中文',
+            'ja': '日本語', 'ko': '한국어', 'tr': 'Türkçe', 'ar': 'العربية',
+            'kk': 'Қазақша', 'uz': 'Oʻzbekcha', 'ky': 'Кыргызча', 'be': 'Беларуская',
+            'uk': 'Українська', 'pl': 'Polski', 'nl': 'Nederlands', 'cs': 'Čeština',
+        }
+        items = []
+        for code, flores in sorted(LANG_TO_FLORES.items()):
+            items.append({'code': code, 'flores_code': flores, 'name': names.get(code, code)})
+        return Response({'languages': items})
+
+
 class SubtitleDownloadView(APIView):
     """GET /jobs/{id}/subtitles/?lang=ru&fmt=srt — скачать субтитры."""
 

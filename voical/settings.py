@@ -36,6 +36,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -47,6 +48,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     # фильтрация списков
     'django_filters',
+    # WebSocket
+    'channels',
     # наше приложение
     'core',
 ]
@@ -79,6 +82,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'voical.wsgi.application'
+ASGI_APPLICATION = 'voical.asgi.application'
+
+# Channels — коммуникации по WebSocket (ТЗ День 9)
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [os.getenv('REDIS_URL', 'redis://localhost:6379/0')],
+        },
+    },
+}
 
 
 # Database
