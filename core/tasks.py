@@ -231,6 +231,26 @@ def process_job_task(self, job_id):
             result_files.append({'lang': tgt, 'type': 'vtt',
                                  'path': vtt_path.relative_to(settings.MEDIA_ROOT).as_posix()})
 
+            # TTS для режима dubbing (ТЗ День 14, preset_auto)
+            if job.mode == 'dubbing':
+                from .tts import synthesize
+                from .voices import get_preset_voice
+                tts_dir = job_dir / 'tts' / tgt
+                tts_dir.mkdir(parents=True, exist_ok=True)
+                # определяем пол каждого спикера из transcript.speakers
+                for i, seg in enumerate(translated):
+                    spk = seg.get('speaker_id', 'spk_0')
+                    gender = transcript.speakers.get(spk, {}).get('gender', 'male')
+                    if gender not in ('male', 'female'):
+                        gender = 'male'
+                    # длительность оригинала
+                    dur = float(seg.get('end', 0)) - float(seg.get('start', 0))
+                    dur = max(0.5, dur)
+                    out_wav = tts_dir / f'{i:04d}.wav'
+                    synthesize(seg.get('text',''), tgt, gender, out_wav, duration=dur)
+                # пока без микширования (День 15-16), просто отметим что tts готов
+                # файлы tts не в result_files до сборки видео
+
         job.result_files = result_files
         job.current_step = 'done'
         job.progress_percent = 100

@@ -4,7 +4,7 @@ from django.urls import path
 from .views import (CustomLoginView, HealthView, JobCancelView, JobDetailView, JobListCreateView,
                     JobResultView, JobRetryView, JobVideoCreateView, LanguagesView, LogoutView, MeView,
                     RegisterView, SubtitleDownloadView, TokenRefreshView, TranscriptPreviewView,
-                    VideoDetailView, VideoListCreateView)
+                    VideoDetailView, VideoListCreateView, VoicesView)
 
 urlpatterns = [
     # Авторизация
@@ -23,6 +23,7 @@ urlpatterns = [
     # Служебные
     path('health/', HealthView.as_view(), name='health'),
     path('languages/', LanguagesView.as_view(), name='languages'),
+    path('voices/', VoicesView.as_view(), name='voices'),
 
     # Задачи обработки
     path('jobs/', JobListCreateView.as_view(), name='job-list'),

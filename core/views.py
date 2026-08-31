@@ -300,6 +300,22 @@ class LanguagesView(APIView):
         return Response({'languages': items})
 
 
+class VoicesView(APIView):
+    """GET /voices/ — пул пресет-голосов (ТЗ День 13), фильтры ?lang=&gender=."""
+
+    permission_classes = (AllowAny,)
+    authentication_classes = []
+
+    def get(self, request):
+        from .voices import list_voices
+        lang = request.query_params.get('lang') or request.query_params.get('language')
+        gender = request.query_params.get('gender')
+        if gender and gender not in ('male', 'female'):
+            return Response({'detail': 'gender должен быть male или female'}, status=status.HTTP_400_BAD_REQUEST)
+        voices = list_voices(language=lang, gender=gender)
+        return Response({'voices': voices})
+
+
 class SubtitleDownloadView(APIView):
     """GET /jobs/{id}/subtitles/?lang=ru&fmt=srt — скачать субтитры."""
 
