@@ -184,6 +184,10 @@ FFMPEG_PATH = os.getenv('FFMPEG_PATH', 'ffmpeg')
 WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'base')  # tiny / base / small
 MOCK_ML = os.getenv('MOCK_ML', 'false').lower() in ('1', 'true', 'yes')
 
+# Диаризация (ТЗ День 11) — токен берётся с https://huggingface.co/settings/tokens
+HF_TOKEN = os.getenv('HF_TOKEN', '')
+DIARIZATION_MODEL = os.getenv('DIARIZATION_MODEL', 'pyannote/speaker-diarization-3.1')
+
 # Перевод (ТЗ п. 3.4) — провайдер переключается через .env: mock | nllb | google
 TRANSLATE_PROVIDER = os.getenv('TRANSLATE_PROVIDER', 'mock')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')

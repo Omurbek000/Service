@@ -136,6 +136,15 @@ def detect_language_task(self, video_id):
                 })
             speakers = {'spk_0': {'gender': 'unknown', 'confidence': 0.0}}
 
+        # Диаризация говорящих (ТЗ День 11) + пол (ТЗ День 12)
+        try:
+            from .diarization import diarize
+            segments, speakers = diarize(audio_path, segments)
+            from .gender import detect_gender
+            speakers = detect_gender(audio_path, segments, speakers)
+        except Exception as e:
+            print(f'[detect_language_task] diarization/gender skipped: {e}')
+
         # Сохраняем транскрипт (перезаписываем, если уже был)
         Transcript.objects.update_or_create(
             video=video, language=language,
