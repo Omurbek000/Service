@@ -234,22 +234,47 @@ def process_job_task(self, job_id):
             # TTS для режима dubbing (ТЗ День 14, preset_auto)
             if job.mode == 'dubbing':
                 from .tts import synthesize
-                from .voices import get_preset_voice
+                from .audio import time_stretch
+                from .mux import assemble_dubbed_audio, mux_video
                 tts_dir = job_dir / 'tts' / tgt
                 tts_dir.mkdir(parents=True, exist_ok=True)
-                # определяем пол каждого спикера из transcript.speakers
                 for i, seg in enumerate(translated):
                     spk = seg.get('speaker_id', 'spk_0')
                     gender = transcript.speakers.get(spk, {}).get('gender', 'male')
                     if gender not in ('male', 'female'):
                         gender = 'male'
-                    # длительность оригинала
                     dur = float(seg.get('end', 0)) - float(seg.get('start', 0))
                     dur = max(0.5, dur)
+                    tmp_wav = tts_dir / f'{i:04d}_raw.wav'
                     out_wav = tts_dir / f'{i:04d}.wav'
-                    synthesize(seg.get('text',''), tgt, gender, out_wav, duration=dur)
-                # пока без микширования (День 15-16), просто отметим что tts готов
-                # файлы tts не в result_files до сборки видео
+                    synthesize(seg.get('text',''), tgt, gender, tmp_wav, duration=dur)
+                    # День 15: подгон длительности без искажения тона
+                    try:
+                        time_stretch(tmp_wav, out_wav, dur)
+                        tmp_wav.unlink(missing_ok=True)
+                    except Exception as e:
+                        print(f'[time_stretch] {e}, fallback copy')
+                        try:
+                            tmp_wav.rename(out_wav)
+                        except Exception:
+                            pass
+                # День 16: сборка итогового видео с дубляжом
+                try:
+                    total_dur = video.duration_seconds
+                    if not total_dur:
+                        total_dur = max((float(s.get('end', 0)) for s in translated), default=5.0)
+                    dubbed_audio = job_dir / f'{tgt}_dubbed.wav'
+                    assemble_dubbed_audio(translated, tts_dir, dubbed_audio, total_dur)
+                    out_video = job_dir / f'{tgt}_dubbed.mp4'
+                    mux_video(video.original_file.path, dubbed_audio, out_video)
+                    result_files.append({'lang': tgt, 'type': 'video',
+                                         'path': out_video.relative_to(settings.MEDIA_ROOT).as_posix()})
+                    # также сохраняем аудио отдельно
+                    result_files.append({'lang': tgt, 'type': 'audio',
+                                         'path': dubbed_audio.relative_to(settings.MEDIA_ROOT).as_posix()})
+                except Exception as e:
+                    print(f'[mux] {e}')
+                    # не падаем — субтитры уже есть
 
         job.result_files = result_files
         job.current_step = 'done'
