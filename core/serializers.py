@@ -136,11 +136,11 @@ class JobCreateSerializer(serializers.ModelSerializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
-    """Просмотр задачи и её прогресса."""
+    """Просмотр задачи и её прогресса (voice_mode — ТЗ День 19)."""
 
     class Meta:
         model = Job
-        fields = ('id', 'video', 'mode', 'target_languages', 'hardsub', 'status',
+        fields = ('id', 'video', 'mode', 'target_languages', 'voice_mode', 'hardsub', 'status',
                   'current_step', 'progress_percent', 'result_files', 'created_at', 'finished_at')
-        read_only_fields = ('id', 'status', 'current_step', 'progress_percent',
+        read_only_fields = ('id', 'voice_mode', 'status', 'current_step', 'progress_percent',
                             'result_files', 'created_at', 'finished_at')

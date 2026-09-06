@@ -1,0 +1,12 @@
+fastapi>=0.110
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+numpy>=1.24
+soundfile>=0.12
+# Для реального режима (GPU) — ставятся на Colab/Kaggle, локально не нужны:
+# torch==2.7.0
+# torchaudio==2.7.0
+# funasr
+# funasr-onnx
+# modelscope
+# CosyVoice (клонируется с github.com/FunAudioLLM/CosyVoice)

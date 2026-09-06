@@ -49,16 +49,21 @@ def synthesize(text, language, gender, out_path, duration=None):
         }
         voice = edge_map.get((language, gender), 'en-US-GuyNeural')
 
+        tmp = out_path.with_suffix('.mp3')
         async def _run():
             comm = edge_tts.Communicate(text, voice)
-            await comm.save(str(out_path))
+            await comm.save(str(tmp))
 
         asyncio.run(_run())
         # edge-tts выдаёт mp3, конвертируем в wav 24кГц
-        tmp = out_path.with_suffix('.mp3')
-        # на деле edge_tts сохраняет сразу в out_path, но если mp3 — конвертим
         if out_path.suffix == '.wav':
-            subprocess.run([settings.FFMPEG_PATH, '-y', '-i', str(out_path), '-ar', '24000', str(out_path)], check=True, capture_output=True)
+            subprocess.run([settings.FFMPEG_PATH, '-y', '-i', str(tmp), '-ar', '24000', '-ac', '1', str(out_path)], check=True, capture_output=True)
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+        else:
+            tmp.rename(out_path)
         return out_path
     except Exception as e:
         print(f'[tts] fallback to mock: {e}')

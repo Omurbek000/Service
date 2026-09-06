@@ -194,6 +194,13 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 # Локальная модель NLLB-200 (используется при TRANSLATE_PROVIDER=nllb)
 NLLB_MODEL = os.getenv('NLLB_MODEL', 'facebook/nllb-200-distilled-600M')
 
+# CosyVoice GPU-воркер (ТЗ День 17-19) — URL туннеля Colab/Kaggle
+COSYVOICE_URL = os.getenv('COSYVOICE_URL', '')
+COSYVOICE_ENABLED = os.getenv('COSYVOICE_ENABLED', 'true' if COSYVOICE_URL else 'false').lower() in ('1', 'true', 'yes')
+COSYVOICE_TIMEOUT = int(os.getenv('COSYVOICE_TIMEOUT', '30'))
+COSYVOICE_HEALTH_TIMEOUT = int(os.getenv('COSYVOICE_HEALTH_TIMEOUT', '5'))
+COSYVOICE_SAMPLE_MIN_DURATION = float(os.getenv('COSYVOICE_SAMPLE_MIN_DURATION', '1.5'))
+
 
 # Celery (асинхронные задачи)
 

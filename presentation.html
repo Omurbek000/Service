@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDub • AutoSub — Презентация бекенда</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config={theme:{extend:{fontFamily:{sans:['Manrope','sans-serif'],mono:['JetBrains Mono','monospace']},animation:{'fade-in':'fadeIn 0.6s ease','slide-up':'slideUp 0.7s ease','pulse-slow':'pulse 3s infinite'}}}}
+</script>
+<style>
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#334155;border-radius:99px}
+*{scroll-behavior:smooth}
+</style>
+</head>
+<body class="bg-[#0a0f1e] text-zinc-100 font-sans overflow-x-hidden">
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const {useState,useEffect,useRef} = React;
+
+const steps = [
+  {id:1, title:'Upload', desc:'POST /videos/ multipart', icon:'⬆️', color:'from-violet-600 to-indigo-600', time:'0.3с'},
+  {id:2, title:'Extract', desc:'ffmpeg 16кГц mono', icon:'🎧', color:'from-blue-600 to-cyan-600', time:'0.3с'},
+  {id:3, title:'Whisper', desc:'faster-whisper base', icon:'🧠', color:'from-emerald-600 to-teal-600', time:'5.9с'},
+  {id:4, title:'Diarize', desc:'pyannote + gender', icon:'👥', color:'from-amber-600 to-orange-600', time:'mock'},
+  {id:5, title:'Translate', desc:'NLLB-200 ru', icon:'🌐', color:'from-pink-600 to-rose-600', time:'230с'},
+  {id:6, title:'TTS', desc:'edge-tts Dmitry', icon:'🗣️', color:'from-red-600 to-pink-600', time:'6с'},
+  {id:7, title:'Mux', desc:'atempo + assemble', icon:'🎬', color:'from-indigo-600 to-violet-600', time:'1.2с'},
+];
+
+const endpoints = [
+  {m:'POST', p:'/auth/register/', d:'Регистрация', c:'bg-emerald-500'},
+  {m:'POST', p:'/auth/login/', d:'JWT access/refresh', c:'bg-emerald-500'},
+  {m:'POST', p:'/videos/', d:'Загрузка mp4/mov 413 лимит', c:'bg-violet-500'},
+  {m:'GET', p:'/videos/{id}/preview-transcript/', d:'detected_language en 0.62', c:'bg-blue-500'},
+  {m:'POST', p:'/jobs/', d:'mode subtitles|dubbing', c:'bg-amber-500'},
+  {m:'GET', p:'/jobs/{id}/', d:'progress voice_mode result_files', c:'bg-blue-500'},
+  {m:'GET', p:'/voices/?lang=ru', d:'14 пресетов', c:'bg-zinc-500'},
+  {m:'WS', p:'ws/jobs/{id}/?token=', d:'job_progress/completed', c:'bg-pink-500'},
+];
+
+function useInView(ref){
+  const [v,setV]=useState(false);
+  useEffect(()=>{
+    const o=new IntersectionObserver(([e])=>{if(e.isIntersecting) setV(true)},{threshold:0.2});
+    if(ref.current) o.observe(ref.current);
+    return()=>o.disconnect();
+  },[]);
+  return v;
+}
+
+function Pipeline(){
+  const [active,setActive]=useState(0);
+  useEffect(()=>{
+    const id=setInterval(()=>setActive(a=>(a+1)%steps.length),900);
+    return()=>clearInterval(id);
+  },[]);
+  return (
+    <div className="relative">
+      <div className="absolute top-[28px] left-[8%] right-[8%] h-[2px] bg-white/10 hidden lg:block"></div>
+      <div className="absolute top-[28px] left-[8%] h-[2px] bg-gradient-to-r from-violet-600 to-pink-600 transition-all duration-700 hidden lg:block" style={{width:`${(active/(steps.length-1))*84}%`}}></div>
+      <div className="flex lg:grid lg:grid-cols-7 gap-3 overflow-x-auto pb-2 lg:pb-0 snap-x snap-mandatory">
+        {steps.map((s,i)=>(
+          <div key={s.id} className={`snap-center shrink-0 w-[148px] lg:w-auto relative rounded-2xl p-4 border transition-all duration-500 ${i===active?'bg-white text-zinc-900 border-white scale-[1.03] shadow-xl -translate-y-1':'bg-white/[0.06] border-white/10 backdrop-blur'}`}>
+            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center text-sm mb-3 ${i===active?'':'opacity-90'}`}>{s.icon}</div>
+            <div className={`text-xs font-extrabold tracking-widest ${i===active?'text-violet-600':'text-white/60'}`}>0{i+1}</div>
+            <div className={`font-extrabold leading-none ${i===active?'text-zinc-900':'text-white'}`}>{s.title}</div>
+            <div className={`text-[11px] leading-tight mt-1 ${i===active?'text-zinc-600':'text-white/60'}`}>{s.desc}</div>
+            <div className={`mt-2 text-[10px] font-mono px-1.5 py-0.5 rounded-full inline-block ${i===active?'bg-zinc-900 text-white':'bg-white/10 text-white/70'}`}>{s.time}</div>
+            {i===active && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white rotate-45 hidden lg:block"></div>}
+          </div>
+        ))}
+      </div>
+      <div className="lg:hidden text-center text-[11px] font-mono text-white/40 mt-2">← свайп →</div>
+    </div>
+  )
+}
+
+function Counter({to}){
+  const [n,setN]=useState(0);
+  const ref=useRef(null);
+  const vis=useInView(ref);
+  useEffect(()=>{if(!vis) return; let s=0; const id=setInterval(()=>{s+=Math.ceil(to/30); if(s>=to){s=to; clearInterval(id);} setN(s)},30); return()=>clearInterval(id)},[vis,to]);
+  return <span ref={ref}>{n}</span>;
+}
+
+function TryIt(){
+  const [run,setRun]=useState(false);
+  const [p,setP]=useState(0);
+  const [step,setStep]=useState('idle');
+  const logs=[
+    {at:8, t:'POST /videos/ → 201 uploading'},
+    {at:18, t:'extract_audio ffmpeg 16кГц → language_detection'},
+    {at:35, t:'Whisper base: en 0.62 → I want you to turn...'},
+    {at:55, t:'GET /videos/{id}/ → detected_language en'},
+    {at:70, t:'POST /jobs/ dubbing ru → queued'},
+    {at:82, t:'translate en→ru NLLB: Я хочу...'},
+    {at:92, t:'TTS edge-tts Dmitry 6.02с → atempo 9.42с'},
+    {at:98, t:'mux -c:v copy → output_ru_dubbed.mp4 6.6МБ'},
+  ];
+  useEffect(()=>{
+    if(!run) return;
+    setP(0); setStep('uploading');
+    const seq=[
+      [8,'uploading'],[18,'language_detection'],[35,'transcribing'],[55,'awaiting_user_choice'],[70,'translating'],[82,'tts'],[92,'mux'],[100,'completed']
+    ];
+    let i=0;
+    const id=setInterval(()=>{
+      if(i>=seq.length){clearInterval(id); setRun(false); return;}
+      setP(seq[i][0]); setStep(seq[i][1]); i++;
+    },700);
+    return()=>clearInterval(id);
+  },[run]);
+  return (
+    <div className="bg-white text-zinc-900 rounded-[24px] p-5 shadow-xl">
+      <div className="flex items-center justify-between">
+        <h3 className="font-extrabold">Try it — живой прогресс</h3>
+        <span className={`text-[11px] font-mono px-2.5 py-1 rounded-full border ${step==='completed'?'bg-emerald-500 text-white border-emerald-500':'bg-zinc-900 text-white border-zinc-900'}`}>{step}</span>
+      </div>
+      <div className="mt-4 h-2 bg-zinc-100 rounded-full overflow-hidden">
+        <div className="h-full bg-gradient-to-r from-violet-600 to-pink-600 transition-all duration-700" style={{width:`${p}%`}}></div>
+      </div>
+      <div className="mt-2 flex justify-between text-[11px] font-mono text-zinc-500"><span>0%</span><span className="font-bold text-violet-600">{p}%</span><span>100%</span></div>
+      <div className="mt-4 bg-zinc-900 rounded-xl p-3 font-mono text-[11px] leading-relaxed max-h-[160px] overflow-auto">
+        {logs.filter(l=>l.at<=p).map((l,idx)=>(
+          <div key={idx} className="flex gap-2 py-1 border-b border-white/5 last:border-0 animate-[fadeIn_0.3s_ease]">
+            <span className="text-white/40">{l.at}%</span>
+            <span className={l.at===p?'text-emerald-300':'text-white/80'}>{l.t}</span>
+          </div>
+        ))}
+        {p===0 && <span className="text-white/40">Нажми «Запустить» — увидишь как фронт поллит GET /jobs/{'{id}'} или слушает WS ws/jobs/{'{id}'}/?token=</span>}
+        {p===100 && <div className="mt-2 bg-emerald-500 text-white rounded-lg px-3 py-2 font-bold">✓ completed — качай output_ru.srt / output_ru_dubbed.mp4</div>}
+      </div>
+      <button onClick={()=>setRun(true)} disabled={run} className={`mt-4 w-full font-extrabold py-3 rounded-full transition ${run?'bg-zinc-200 text-zinc-500 cursor-not-allowed':'bg-zinc-900 text-white hover:bg-black'}`}>{run?'▶️ Идёт...':'▶️ Запустить демо-поток'}</button>
+      <div className="mt-2 text-[11px] text-zinc-500 font-mono">Мок-поллинг: без БД, но 1-в-1 как process_job_task + JobLog + WS</div>
+    </div>
+  )
+}
+
+function App(){
+  const [tab,setTab]=useState('ru');
+  const [play,setPlay]=useState(false);
+  return (
+    <div className="min-h-screen">
+      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#0a0f1e]/70 border-b border-white/10">
+        <div className="max-w-[1160px] mx-auto px-4 h-[56px] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-pink-600 flex items-center justify-center font-black text-xs">AD</div>
+            <span className="font-extrabold tracking-tight">AutoDub</span><span className="text-white/50 text-sm hidden sm:inline">/ AutoSub API</span>
+            <span className="hidden md:inline-flex ml-2 text-[11px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded-full">37/37 tests</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="#demo" className="hidden sm:inline-flex text-sm text-white/70 hover:text-white px-3 py-1.5">Демо</a>
+            <a href="#api" className="hidden sm:inline-flex text-sm text-white/70 hover:text-white px-3 py-1.5">API</a>
+            <a href="http://localhost:8000/health/" target="_blank" className="text-xs font-bold bg-white text-zinc-900 px-3.5 py-2 rounded-full hover:bg-zinc-100 transition">health →</a>
+          </div>
+        </div>
+      </nav>
+
+      <section className="max-w-[1160px] mx-auto px-4 pt-10 pb-6">
+        <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6 items-start">
+          <div>
+            <div className="inline-flex items-center gap-2 text-xs font-mono bg-white/5 border border-white/10 rounded-full px-3 py-1">
+              <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span> Этапы 1-3 готовы • Этап 4 пожелание
+            </div>
+            <h1 className="mt-4 text-[34px] md:text-[46px] font-extrabold leading-[0.95] tracking-tight">
+              Автоперевод и<br/>
+              <span className="bg-gradient-to-r from-violet-400 via-pink-400 to-cyan-400 bg-clip-text text-transparent">автоозвучка видео</span><br/>
+              + субтитры
+            </h1>
+            <p className="mt-4 text-white/65 leading-relaxed max-w-[560px]">Бекенд Django + Celery + Whisper + NLLB + edge-tts/CosyVoice. Заливаешь видео → автоматом определяет язык → выбираешь <span className="text-white font-semibold">ru/en/fr/de/es/zh/kk</span> → получаешь <span className="text-white font-semibold">.srt/.vtt</span> и видео с дубляжом.</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a href="#demo" className="bg-white text-zinc-900 font-extrabold px-5 py-3 rounded-full hover:bg-zinc-100 transition">Смотреть демо ↓</a>
+              <a href="#pipeline" className="bg-white/10 border border-white/15 font-semibold px-5 py-3 rounded-full hover:bg-white/15 transition">Пайплайн</a>
+            </div>
+            <div className="mt-6 grid grid-cols-3 gap-3 max-w-[520px]">
+              {[{k:'37', d:'тестов'}, {k:'52.6с', d:'видео демо'}, {k:'5.9с', d:'Whisper base'}].map(x=>(
+                <div key={x.d} className="bg-white/[0.06] border border-white/10 rounded-2xl p-4">
+                  <div className="text-2xl font-black"><Counter to={parseInt(x.k)||37}/>{x.k.includes('с')?'с':''}</div>
+                  <div className="text-xs text-white/60">{x.d}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-white to-zinc-100 text-zinc-900 rounded-[24px] p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-mono text-zinc-500">output_ru.srt — реал NLLB</div>
+              <span className="text-[11px] font-bold bg-emerald-500 text-white px-2 py-1 rounded-full">UTF-8 • 124 bytes</span>
+            </div>
+            <pre className="mt-3 bg-zinc-900 text-emerald-300 font-mono text-xs rounded-xl p-3 overflow-hidden leading-relaxed">1{'\n'}00:00:08,850 --&gt; 00:00:18,270{'\n'}Я хочу, чтобы ты обратился к моему мысли,{'\n'}моя любовь как, моя любовь как</pre>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-zinc-900 text-white rounded-xl p-3">
+                <div className="text-white/60 font-mono text-[11px]">TRANSCRIPT (en 0.62)</div>
+                <div className="mt-1 font-semibold leading-tight">I want you to turn to my mind, my love is like...</div>
+                <div className="text-white/50 text-[11px] mt-1">8.85 — 18.27 • spk_0 male 0.95</div>
+              </div>
+              <div className="bg-violet-600 text-white rounded-xl p-3">
+                <div className="text-white/80 font-mono text-[11px]">VOICE</div>
+                <div className="font-extrabold">ru-RU-DmitryNeural</div>
+                <div className="text-white/70 text-[11px]">edge-tts • 6.02с • 24кГц</div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-xs font-mono text-zinc-600">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> output_ru_dubbed.mp4 • 6.6 МБ • 52.59с • mux -c:v copy
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pipeline" className="max-w-[1160px] mx-auto px-4 py-6">
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-extrabold">Пайплайн</h2>
+          <span className="text-xs font-mono bg-white/10 border border-white/10 px-2.5 py-1 rounded-full">MOCK_ML=false • TRANSLATE=nllb • edge-tts</span>
+        </div>
+        <Pipeline/>
+        <div className="mt-4 bg-white/[0.06] border border-white/10 rounded-2xl p-4 grid md:grid-cols-3 gap-4 text-sm">
+          <div><span className="text-white font-bold">GPU-воркер</span><span className="text-white/60"> — </span><span className="font-mono text-xs bg-white/10 px-2 py-1 rounded-full">gpu_worker/server.py</span> <span className="text-white/60">Colab T4 + cloudflared → </span><span className="font-mono text-xs">COSYVOICE_URL</span></div>
+          <div><span className="font-mono text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 px-2 py-1 rounded-full">health /health</span> <span className="text-white/60">перед каждым job, fallback на пресеты</span></div>
+          <div><span className="font-mono text-xs bg-violet-500/20 text-violet-300 border border-violet-500/20 px-2 py-1 rounded-full">choose_voice_mode</span> <span className="text-white/60">clone если семпл ≥1.5с иначе preset_auto</span></div>
+        </div>
+      </section>
+
+      <section id="demo" className="max-w-[1160px] mx-auto px-4 py-6">
+        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-6">
+          <div className="bg-white text-zinc-900 rounded-[24px] overflow-hidden shadow-xl">
+            <div className="h-1 bg-gradient-to-r from-violet-600 via-pink-600 to-cyan-500"></div>
+            <div className="p-5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black tracking-widest text-violet-600">DEMO</span>
+                <span className="text-xs font-mono bg-zinc-900 text-white px-2 py-1 rounded-full">*_My_Love_Is_Like_(cover)_3.mp4 • 7.3 МБ</span>
+              </div>
+              <div className="mt-3 aspect-[16/9] rounded-2xl overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-black relative group border border-white/10">
+                <video controls poster="" className="w-full h-full object-cover" src="output_ru_dubbed.mp4" onError={(e)=>{e.target.style.display='none'; e.target.nextSibling.style.display='flex';}}></video>
+                <div className="absolute inset-0 hidden items-center justify-center bg-gradient-to-br from-violet-600/20 via-transparent to-cyan-600/20">
+                  <div className="bg-white text-zinc-900 rounded-2xl px-5 py-3 font-extrabold text-sm shadow-xl text-center">
+                    <div>▶️ output_ru_dubbed.mp4</div>
+                    <div className="text-xs font-mono text-zinc-500 mt-1">Открой через http://localhost:8001 для видео</div>
+                  </div>
+                </div>
+                <div className="absolute bottom-2 left-2 right-2 bg-black/70 backdrop-blur text-white text-xs font-mono rounded-xl px-3 py-2 flex items-center justify-between">
+                  <span>52.59с • 320x240 • mux -c:v copy</span>
+                  <button onClick={()=>setPlay(p=>!p)} className="bg-white text-zinc-900 font-bold px-3 py-1 rounded-full hover:bg-zinc-100 transition">{play?'⏸️':'▶️'} {play?'Пауза':'Субтитры'}</button>
+                </div>
+              </div>
+              {play && (
+                <div className="mt-3 bg-zinc-900 text-white rounded-xl p-3 font-mono text-xs leading-relaxed animate-[fadeIn_0.4s_ease]">
+                  <div className="text-white/50">WEBVTT</div>
+                  00:00:08.850 --&gt; 00:00:18.270<br/>
+                  Я хочу, чтобы ты обратился к моему мысли, моя любовь как, моя любовь как
+                </div>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button onClick={()=>setTab('ru')} className={`px-3.5 py-2 rounded-full font-bold text-sm border ${tab==='ru'?'bg-zinc-900 text-white border-zinc-900':'bg-white border-zinc-200 text-zinc-700'}`}>RU дубляж</button>
+                <button onClick={()=>setTab('en')} className={`px-3.5 py-2 rounded-full font-bold text-sm border ${tab==='en'?'bg-zinc-900 text-white border-zinc-900':'bg-white border-zinc-200 text-zinc-700'}`}>EN оригинал</button>
+                <a href="output_ru.srt" download className="ml-auto text-xs font-bold bg-violet-600 text-white px-3.5 py-2 rounded-full">⬇️ .srt</a>
+                <a href="output_ru.vtt" download className="text-xs font-bold bg-white border border-zinc-200 px-3.5 py-2 rounded-full">.vtt</a>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <TryIt/>
+            <div className="bg-white/[0.06] backdrop-blur border border-white/10 rounded-[24px] p-5">
+              <h3 className="font-extrabold">Как фронт вызывает бекенд</h3>
+              <div className="mt-3 space-y-2 font-mono text-[11px] leading-relaxed">
+                <div className="bg-zinc-900 border border-white/10 rounded-xl p-3 text-emerald-300">POST /videos/ <span className="text-white/50">multipart file</span> → 201 {'{id, status: uploading}'}<br/>→ extract_audio → language_detection</div>
+                <div className="bg-zinc-900 border border-white/10 rounded-xl p-3 text-cyan-300">GET /videos/{'{id}'} → {'{detected_language: en, confidence:0.62}'}<br/>GET /videos/{'{id}'}/preview-transcript/</div>
+                <div className="bg-violet-600 rounded-xl p-3 text-white">POST /jobs/ {'{video, mode:dubbing, target_languages:[ru]}'} → queued<br/>GET /jobs/{'{id}'} → {'{progress:62, voice_mode:clone, current_step:tts}'}<br/>WS ws/jobs/{'{id}'}/?token= → progress/completed</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-violet-600 to-indigo-600 rounded-[24px] p-5 text-white">
+              <div className="text-sm font-black">Готово к фронту</div>
+              <div className="text-sm text-white/80 mt-1">37/37 тестов, `SimpleTestCase` без БД, `ffmpeg` реал, `MOCK_ML=false` транскрипт реал, `edge-tts` реал голос. Осталось — верстка `React` + `TanStack Query` + `WS`.</div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-mono">
+                <span className="bg-white/15 border border-white/20 px-2.5 py-1 rounded-full">POSTGRES 5433</span>
+                <span className="bg-white/15 border border-white/20 px-2.5 py-1 rounded-full">REDIS</span>
+                <span className="bg-white/15 border border-white/20 px-2.5 py-1 rounded-full">CELERY cpu</span>
+                <span className="bg-white/15 border border-white/20 px-2.5 py-1 rounded-full">Channels WS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="api" className="max-w-[1160px] mx-auto px-4 py-6">
+        <h2 className="text-xl font-extrabold">API — без /api/v1/ (voical/urls.py)</h2>
+        <div className="mt-4 grid md:grid-cols-2 gap-3">
+          {endpoints.map(e=>(
+            <div key={e.p} className="flex items-center gap-3 bg-white/[0.06] border border-white/10 rounded-2xl px-4 py-3 backdrop-blur">
+              <span className={`text-[11px] font-black text-white px-2 py-1 rounded-full ${e.c}`}>{e.m}</span>
+              <span className="font-mono text-xs text-white truncate">{e.p}</span>
+              <span className="ml-auto text-xs text-white/60 text-right hidden sm:block">{e.d}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 bg-white text-zinc-900 rounded-2xl p-4 grid md:grid-cols-3 gap-4 text-sm">
+          <div><b>Коды:</b> 201 ok, 400 valid, 401, 404 (чужое→404), 409 конфликт, 413 лимит, 500, 503 ML перегружен</div>
+          <div><b>Пагинация:</b> `?status=` `?page=` `StandardPagination` 10</div>
+          <div><b>Файлы:</b> `media/jobs/{'{id}'}/ru.srt` + `ru_dubbed.mp4` + `cosyvoice_cache/{'{video}'}_{'{spk}'}.wav`</div>
+        </div>
+      </section>
+
+      <section className="max-w-[1160px] mx-auto px-4 pb-10">
+        <div className="bg-white rounded-[24px] p-6 text-zinc-900 grid lg:grid-cols-[1fr_380px] gap-6">
+          <div>
+            <h3 className="font-extrabold text-lg">Стек и где что лежит</h3>
+            <div className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">
+              {[
+                ['Whisper','core/tasks.py:94 faster-whisper base/int8, 141МБ'],
+                ['Diarize','core/diarization.py pyannote 3.1 mock/real'],
+                ['Gender','core/gender.py librosa piptrack mock'],
+                ['Voices','core/voices.py 14 пресетов get_preset_voice'],
+                ['TTS','core/tts.py edge-tts Dmitry/Guy + mock'],
+                ['Stretch','core/audio.py atempo 0.5-2.0 цепочка'],
+                ['Mux','core/mux.py assemble + mux_video copy'],
+                ['Clone','core/cosyvoice_client.py health→zero_shot→fallback'],
+              ].map(([k,v])=>(
+                <div key={k} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
+                  <div className="font-bold text-xs tracking-widest text-zinc-500">{k}</div>
+                  <div className="font-mono text-[11px] text-zinc-700 leading-tight mt-1">{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-zinc-900 text-white rounded-2xl p-5">
+            <div className="font-extrabold">Запуск</div>
+            <pre className="mt-3 font-mono text-[11px] leading-relaxed bg-white/10 border border-white/10 rounded-xl p-3 overflow-x-auto">docker compose up -d  # 5433
+python manage.py migrate
+python manage.py runserver
+celery -A voical worker -Q cpu -P solo -l info
+
+# реал
+MOCK_ML=false
+TRANSLATE_PROVIDER=nllb
+COSYVOICE_URL=https://xxx.trycloudflare.com</pre>
+            <div className="mt-3 text-xs text-white/60">Этап 4 пожелание: тарифы, редактор, кабинеты — позже.</div>
+          </div>
+        </div>
+        <div className="text-center text-xs text-white/40 font-mono mt-6">AutoDub • Django 6.1 • DRF 3.18 • Python 3.14 • ffmpeg 9 • 37 tests — презентация React в одном html via CDN</div>
+      </section>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>

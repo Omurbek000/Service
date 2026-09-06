@@ -1,5 +1,7 @@
 # Фоновые задачи обработки видео
+import logging
 import subprocess
+import time
 from pathlib import Path
 
 from celery import shared_task
@@ -7,6 +9,8 @@ from django.conf import settings
 from django.utils import timezone
 
 from .models import Job, JobLog, Video
+
+logger = logging.getLogger(__name__)
 
 # Кеш модели Whisper, чтобы не грузить её на каждой задаче
 _whisper_model = None
@@ -177,19 +181,26 @@ def process_job_task(self, job_id):
     try:
         job = Job.objects.get(id=job_id)
     except Job.DoesNotExist:
+        logger.error(f'[process_job {job_id}] job not found')
         return
 
+    logger.info(f'[process_job {job_id}] start mode={job.mode} targets={job.target_languages} video={job.video_id}')
     job.status = 'processing'
     job.current_step = 'translating'
     job.started_at = timezone.now()
     job.save(update_fields=['status', 'current_step', 'started_at'])
+    JobLog.objects.create(job=job, step_name='process_start', status='running',
+                          meta={'mode': job.mode, 'targets': job.target_languages})
 
     video = job.video
     transcript = video.transcripts.order_by('-created_at').first()
     if not transcript:
+        logger.error(f'[process_job {job_id}] no transcript')
         job.status = 'failed'
         job.error_message = 'Нет транскрипции для перевода'
         job.save(update_fields=['status', 'error_message'])
+        JobLog.objects.create(job=job, step_name='process_start', status='failed',
+                              meta={'error': 'no transcript'})
         return
 
     src_lang = transcript.language
@@ -198,6 +209,7 @@ def process_job_task(self, job_id):
 
     targets = job.target_languages or [src_lang]
     result_files = []
+    logger.info(f'[process_job {job_id}] src_lang={src_lang} targets={targets} segments={len(transcript.segments)}')
 
     try:
         for idx, tgt in enumerate(targets, 1):
@@ -219,7 +231,9 @@ def process_job_task(self, job_id):
                     _ws_notify(job.id, 'job_progress', progress_percent=job.progress_percent,
                                current_step=f'translate_to_{tgt}', status='processing')
             log.status = 'success'
-            log.save(update_fields=['status'])
+            log.finished_at = timezone.now()
+            log.save(update_fields=['status', 'finished_at'])
+            logger.info(f'[process_job {job_id}] translate {src_lang}->{tgt} done segments={len(translated)}')
 
             # Субтитры генерируем для обоих режимов
             srt_path = job_dir / f'{tgt}.srt'
@@ -230,12 +244,25 @@ def process_job_task(self, job_id):
                                  'path': srt_path.relative_to(settings.MEDIA_ROOT).as_posix()})
             result_files.append({'lang': tgt, 'type': 'vtt',
                                  'path': vtt_path.relative_to(settings.MEDIA_ROOT).as_posix()})
+            logger.info(f'[process_job {job_id}] subtitles {tgt} written: {srt_path.name}, {vtt_path.name}')
 
-            # TTS для режима dubbing (ТЗ День 14, preset_auto)
+            # TTS для режима dubbing (ТЗ День 14 preset_auto, Дни 18-19 — clone с fallback, День 19 — выбор voice_mode)
             if job.mode == 'dubbing':
                 from .tts import synthesize
                 from .audio import time_stretch
                 from .mux import assemble_dubbed_audio, mux_video
+                # День 19: выбор voice_mode по качеству сэмпла (ТЗ п. 3.5)
+                if not job.voice_mode:
+                    try:
+                        from .cosyvoice_client import choose_voice_mode
+                        audio_path_for_choice = get_audio_path(video.id)
+                        job.voice_mode = choose_voice_mode(transcript, audio_path_for_choice)
+                        job.save(update_fields=['voice_mode'])
+                        print(f'[voice_mode] выбрано: {job.voice_mode}')
+                    except Exception as e:
+                        print(f'[voice_mode] выбор failed: {e}, fallback preset_auto')
+                        job.voice_mode = 'preset_auto'
+                        job.save(update_fields=['voice_mode'])
                 tts_dir = job_dir / 'tts' / tgt
                 tts_dir.mkdir(parents=True, exist_ok=True)
                 for i, seg in enumerate(translated):
@@ -247,7 +274,33 @@ def process_job_task(self, job_id):
                     dur = max(0.5, dur)
                     tmp_wav = tts_dir / f'{i:04d}_raw.wav'
                     out_wav = tts_dir / f'{i:04d}.wav'
-                    synthesize(seg.get('text',''), tgt, gender, tmp_wav, duration=dur)
+                    # День 19: приоритет clone → fallback preset_auto
+                    used_clone = False
+                    if job.voice_mode == 'clone':
+                        try:
+                            from .cosyvoice_client import is_sample_sufficient, get_speaker_prompt_path, synthesize_with_fallback
+                            audio_path = get_audio_path(video.id)
+                            # проверяем качество сэмпла для этого спикера
+                            if is_sample_sufficient(spk, audio_path, transcript.segments, transcript.speakers):
+                                prompt_path = get_speaker_prompt_path(video.id, spk, audio_path, transcript.segments)
+                                prompt_text = seg.get('text', '')
+                                for orig in transcript.segments:
+                                    if orig.get('speaker_id') == spk and orig.get('text'):
+                                        prompt_text = orig.get('text')[:200]
+                                        break
+                                if prompt_path and prompt_path.exists():
+                                    _, used_clone = synthesize_with_fallback(
+                                        seg.get('text',''), tgt, gender, tmp_wav,
+                                        prompt_wav=prompt_path, prompt_text=prompt_text, duration=dur)
+                                    # used_clone уже учитывает health_check и успех
+                                else:
+                                    print(f'[cosyvoice] no prompt for {spk}, fallback preset')
+                            else:
+                                print(f'[cosyvoice] sample insufficient for {spk}, fallback preset')
+                        except Exception as e:
+                            print(f'[cosyvoice] clone attempt failed: {e}')
+                    if not used_clone:
+                        synthesize(seg.get('text',''), tgt, gender, tmp_wav, duration=dur)
                     # День 15: подгон длительности без искажения тона
                     try:
                         time_stretch(tmp_wav, out_wav, dur)
@@ -259,12 +312,18 @@ def process_job_task(self, job_id):
                         except Exception:
                             pass
                 # День 16: сборка итогового видео с дубляжом
+                tts_log = JobLog.objects.create(job=job, step_name=f'tts_{tgt}', status='running',
+                                                meta={'voice_mode': job.voice_mode, 'segments': len(translated)})
+                mux_log = JobLog.objects.create(job=job, step_name=f'mux_{tgt}', status='running')
                 try:
                     total_dur = video.duration_seconds
                     if not total_dur:
                         total_dur = max((float(s.get('end', 0)) for s in translated), default=5.0)
                     dubbed_audio = job_dir / f'{tgt}_dubbed.wav'
                     assemble_dubbed_audio(translated, tts_dir, dubbed_audio, total_dur)
+                    tts_log.status = 'success'
+                    tts_log.finished_at = timezone.now()
+                    tts_log.save(update_fields=['status', 'finished_at'])
                     out_video = job_dir / f'{tgt}_dubbed.mp4'
                     mux_video(video.original_file.path, dubbed_audio, out_video)
                     result_files.append({'lang': tgt, 'type': 'video',
@@ -272,7 +331,20 @@ def process_job_task(self, job_id):
                     # также сохраняем аудио отдельно
                     result_files.append({'lang': tgt, 'type': 'audio',
                                          'path': dubbed_audio.relative_to(settings.MEDIA_ROOT).as_posix()})
+                    mux_log.status = 'success'
+                    mux_log.finished_at = timezone.now()
+                    mux_log.save(update_fields=['status', 'finished_at'])
+                    logger.info(f'[process_job {job_id}] dubbing {tgt} done: {out_video.name} ({total_dur}s)')
                 except Exception as e:
+                    logger.error(f'[process_job {job_id}] mux failed: {e}')
+                    tts_log.status = 'failed'
+                    tts_log.meta = {'error': str(e)}
+                    tts_log.finished_at = timezone.now()
+                    tts_log.save(update_fields=['status', 'meta', 'finished_at'])
+                    mux_log.status = 'failed'
+                    mux_log.meta = {'error': str(e)}
+                    mux_log.finished_at = timezone.now()
+                    mux_log.save(update_fields=['status', 'meta', 'finished_at'])
                     print(f'[mux] {e}')
                     # не падаем — субтитры уже есть
 
@@ -282,13 +354,19 @@ def process_job_task(self, job_id):
         job.status = 'completed'
         job.finished_at = timezone.now()
         job.save(update_fields=['result_files', 'current_step', 'progress_percent', 'status', 'finished_at'])
+        JobLog.objects.create(job=job, step_name='process_done', status='success',
+                              meta={'result_files': len(result_files), 'voice_mode': job.voice_mode})
+        logger.info(f'[process_job {job_id}] completed voice_mode={job.voice_mode} files={result_files}')
         _ws_notify(job.id, 'job_completed', result_files=result_files)
     except Exception as exc:
+        logger.exception(f'[process_job {job_id}] failed: {exc}')
         if self.request.retries >= self.max_retries:
             job.status = 'failed'
             job.error_message = str(exc)
             job.finished_at = timezone.now()
             job.save(update_fields=['status', 'error_message', 'finished_at'])
+            JobLog.objects.create(job=job, step_name='process_done', status='failed',
+                                  meta={'error': str(exc)})
             _ws_notify(job.id, 'job_failed', error_message=str(exc))
             return
         raise self.retry(exc=exc)
